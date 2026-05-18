@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FastAPI",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "src.role_recommender.api.main:app",
+        "--reload",
+        "--port", "8000"
+      ],
+      "jinja": true,
+      "justMyCode": true
+    },
+    {
+      "name": "Streamlit Dashboard",
+      "type": "python",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "src/role_recommender/dashboard/app.py",
+        "--server.port", "8501"
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Pytest",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/", "-v"],
+      "justMyCode": false
+    },
+    {
+      "name": "Download Data",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/role_recommender/data/download.py",
+      "justMyCode": true
+    }
+  ]
+}

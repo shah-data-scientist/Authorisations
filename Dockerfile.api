@@ -1,0 +1,43 @@
+# ── Stage 1: build wheel ──────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+WORKDIR /build
+
+COPY pyproject.toml .
+COPY src/ ./src/
+
+RUN pip install --upgrade pip build \
+ && python -m build --wheel --outdir /dist
+
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM python:3.11-slim
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    APP_ROOT=/app
+
+COPY --from=builder /dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl gunicorn \
+ && rm -rf /tmp/*.whl
+
+# Alembic lives outside the wheel — copy config and migrations
+COPY alembic.ini .
+COPY alembic/ ./alembic/
+
+# Bake models + processed data into the image (avoids slow Windows bind-mount I/O)
+COPY models/ ./models/
+COPY data/processed/ ./data/processed/
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
+  CMD python -c \
+  "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+CMD ["gunicorn", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "-w", "2", \
+     "-b", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "role_recommender.api.main:app"]

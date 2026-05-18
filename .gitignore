@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Data — raw data never goes to git
+data/raw/
+data/interim/
+data/processed/
+
+# Models
+models/*.joblib
+models/*.pkl
+
+# Environment
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime / personal
+logs/
+files/
+.claude/
