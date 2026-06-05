@@ -18,7 +18,7 @@ dependencies = [
     # role mining
     "joblib>=1.4",
 
-    # drift detection & explainability
+    # retained for detector.py / explainer.py (not used in current pipeline)
     "shap>=0.45",
     "xgboost>=2.0",
 

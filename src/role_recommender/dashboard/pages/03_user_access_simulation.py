@@ -54,6 +54,7 @@ def _fetch_history(employee_id: int) -> list[dict]:
         pass
     return []
 
+
 st.title("User Access Simulation")
 st.caption(
     "Simulate granting an employee access to a system they do not"
@@ -74,13 +75,13 @@ st.info(
     "2. The system dropdown shows **only systems the employee does not"
     " currently have access to** — these are the ones worth simulating.\n"
     "3. Click Simulate to receive the drift score for that access.\n\n"
-    "**Drift Score interpretation:**\n"
-    "- **0.0 — Normal:** Routinely accessed by this employee's cluster."
+    "**Drift Score interpretation (continuous 0–1 scale):**\n"
+    "- **< 0.3 — Normal:** Access fits the employee's role profile."
     " Safe to grant.\n"
-    "- **0.3 — Minor Drift:** Used by a related cluster."
+    "- **0.3–0.7 — Minor Drift:** Partial overlap with a related cluster."
     " Quick review recommended before granting.\n"
-    "- **1.0 — High Drift:** Not typical for any of this employee's"
-    " clusters. Escalate for review before granting."
+    "- **≥ 0.7 — High Drift:** Access falls outside the employee's role"
+    " profile entirely. Escalate for review before granting."
 )
 
 matrix = load_matrix()
@@ -137,8 +138,8 @@ if st.button("Run Simulation", type="primary"):
 
     score = result["drift_score"]
     risk_label = (
-        "Safe" if score == 0.0
-        else "Review" if score < 1.0
+        "Safe" if score < 0.3
+        else "Review" if score < 0.7
         else "Escalate"
     )
     _persist_simulation(
@@ -155,8 +156,8 @@ if st.button("Run Simulation", type="primary"):
 
     with col_gauge:
         color = (
-            "#27ae60" if score == 0.0
-            else "#f39c12" if score < 1.0
+            "#27ae60" if score < 0.3
+            else "#f39c12" if score < 0.7
             else "#e74c3c"
         )
         fig_gauge = go.Figure(go.Indicator(
@@ -196,26 +197,26 @@ if st.button("Run Simulation", type="primary"):
 
     with col_verdict:
         st.markdown("### Recommendation")
-        if score == 0.0:
+        if score < 0.3:
             st.success(
                 "**Safe to grant.**\n\n"
                 + result["explanation"]
                 + "\n\nThis access is consistent with the employee's"
                 " cluster. No further review needed."
             )
-        elif score < 1.0:
+        elif score < 0.7:
             st.warning(
                 "**Review before granting.**\n\n"
                 + result["explanation"]
-                + "\n\nThis access is occasionally seen in related"
-                " clusters. A quick approval check is recommended."
+                + "\n\nThis access partially overlaps the employee's"
+                " role profile. A quick approval check is recommended."
             )
         else:
             st.error(
                 "**Do not grant without review.**\n\n"
                 + result["explanation"]
-                + "\n\nThis access is not typical for any cluster this"
-                " employee belongs to. Escalate for approval."
+                + "\n\nThis access falls outside the employee's role"
+                " profile entirely. Escalate for approval."
             )
 
         st.markdown("---")

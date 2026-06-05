@@ -1,15 +1,18 @@
 """
-detector.py — Stage 2 XGBoost drift classifier.
+detector.py — XGBoost drift classifier (NOT USED IN CURRENT PIPELINE).
 
-Trained on historical access-removal events as implicit negative labels:
-a permission that was later revoked is a weak signal it was anomalous.
+This module is retained for reference only. It was superseded by the
+unsupervised NMF cosine drift scorer (scorer.py) for two reasons:
 
-Features per access event:
-- drift_score (from DriftScorer)
-- dominant_role
-- role_weight_dominant  (soft membership weight)
-- resource_frequency    (how common is this resource globally)
-- user_permission_count (how many permissions does this user already have)
+1. Weak labels: ACTION=0 rows in the Amazon dataset are provisioning
+   *refusals*, not *revocations*. Treating them as anomaly labels is
+   methodologically incorrect.
+
+2. Matrix contamination: including ACTION=0 rows in the user-permission
+   matrix inflated apparent access rights and corrupted the NMF model.
+
+The current pipeline uses scorer.py exclusively. This file is not
+imported or called from any active code path.
 """
 import numpy as np
 import pandas as pd

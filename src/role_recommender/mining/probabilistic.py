@@ -74,13 +74,30 @@ class ProbabilisticRoleMiner:
     def save(self, path=None):
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         path = path or MODELS_DIR / f"role_miner_{self.n_roles}roles.joblib"
-        joblib.dump(self, path)
+        # Store raw components — avoids __main__ pickle class-reference bug
+        joblib.dump({
+            "n_roles": self.n_roles,
+            "random_state": self.random_state,
+            "W": self.W,
+            "H": self.H,
+            "user_index": self.user_index,
+            "resource_index": self.resource_index,
+        }, path)
         logger.info(f"Model saved → {path}")
         return path
 
     @classmethod
     def load(cls, path) -> "ProbabilisticRoleMiner":
-        return joblib.load(path)
+        data = joblib.load(path)
+        # Support both old (pickled instance) and new (dict) formats
+        if isinstance(data, dict):
+            obj = cls(n_roles=data["n_roles"], random_state=data["random_state"])
+            obj.W = data["W"]
+            obj.H = data["H"]
+            obj.user_index = data["user_index"]
+            obj.resource_index = data["resource_index"]
+            return obj
+        return data  # legacy pickled instance
 
 
 def train_and_save(n_roles: int = ROLE_COUNT_DEFAULT) -> ProbabilisticRoleMiner:

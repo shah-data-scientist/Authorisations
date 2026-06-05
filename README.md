@@ -1,7 +1,7 @@
 # Access Management Platform
 
 > Projet 13 — OpenClassrooms Data & ML Engineering  
-> Hybrid Role Mining + ABAC Drift Detection with containerised deployment  
+> Hybrid Role Mining + NMF Cosine Drift Detection with containerised deployment  
 > Dataset: UCI Amazon Employee Access (id=216)  
 > Author: Shahul SHAIK
 
@@ -15,10 +15,12 @@ in a production-ready stack comparable to what SailPoint and Saviynt commerciali
 
 **Three core outputs:**
 
-1. **Role Mining** — NMF (k=15, BIC-optimised) produces soft role memberships from
-   the 32,769 × 7,518 user × permission matrix
-2. **Drift Detection** — per-(employee, system) drift score using permission overlap
-   against top-50 resources per cluster; XGBoost classifier (ROC-AUC 0.694)
+1. **Role Mining** — NMF (k=15, BIC-optimised) decomposes the 340 × 7,226
+   user × permission matrix into soft role memberships (W) and role-permission
+   profiles (H)
+2. **Drift Detection** — continuous NMF cosine drift score per (employee, system)
+   pair: `1 − cosine_similarity(W[user], H[:, system])`. Fully unsupervised —
+   no labelled anomalies required.
 3. **Dashboard + API** — Streamlit UI for access review, simulation, and approval
    workflow; FastAPI backend with full CRUD and audit trail in PostgreSQL
 
@@ -68,6 +70,7 @@ in a production-ready stack comparable to what SailPoint and Saviynt commerciali
 ├── env.example                 # secrets template
 ├── pyproject.toml
 ├── Makefile
+├── evaluate_model.py           # unsupervised performance metrics
 ├── alembic.ini
 ├── alembic/
 │   ├── env.py
@@ -79,19 +82,18 @@ in a production-ready stack comparable to what SailPoint and Saviynt commerciali
 │   │
 │   ├── data/
 │   │   ├── download.py         # fetch UCI dataset
-│   │   └── preprocess.py       # encode, build user-permission matrix
+│   │   └── preprocess.py       # clean, filter granted-only, build binary matrix
 │   │
 │   ├── mining/
 │   │   ├── matrix.py
-│   │   ├── probabilistic.py    # NMF role mining (k=15)
-│   │   ├── clustering.py
-│   │   └── model_selection.py  # BIC optimisation
+│   │   ├── probabilistic.py    # NMF role mining (k=15, BIC-optimised)
+│   │   ├── clustering.py       # k-means baseline (comparison only)
+│   │   └── model_selection.py  # BIC optimisation across k=[5,7,10,12,15,20,25,30]
 │   │
 │   ├── drift/
-│   │   ├── scorer.py           # overlap-based drift score
-│   │   ├── detector.py         # XGBoost classifier
-│   │   └── explainer.py        # SHAP explanations
+│   │   └── scorer.py           # NMF cosine drift score (continuous 0–1)
 │   │
+│   ├── analytics.py            # balanced risk score + fleet analytics
 │   ├── db/
 │   │   ├── models.py           # Simulation + AuditLog ORM
 │   │   └── session.py          # async SQLAlchemy session factory
@@ -110,15 +112,14 @@ in a production-ready stack comparable to what SailPoint and Saviynt commerciali
 │       ├── app.py
 │       ├── cluster_utils.py    # fleet analytics loader (Redis → parquet → compute)
 │       └── pages/
-│           ├── 01_access_intelligence.py
-│           ├── 02_user_access_review.py
-│           └── 03_user_access_simulation.py
+│           ├── 01_access_intelligence.py   # fleet overview + system risk
+│           ├── 02_user_access_review.py    # fleet risk table + employee drilldown
+│           └── 03_user_access_simulation.py # grant simulation + scoring
 │
-├── models/                     # serialised NMF + XGBoost artefacts (joblib)
-├── data/processed/             # feature matrices (parquet)
+├── models/                     # serialised NMF artefact (joblib)
+├── data/processed/             # user_permission_matrix.parquet + fleet_analytics.parquet
 ├── tests/
 └── docs/
-    └── project_management_report.md
 ```
 
 ---
@@ -154,13 +155,16 @@ pip install -e ".[dev]"
 # 2. Download and preprocess data
 make data
 
-# 3. Train models
+# 3. Train the NMF role miner
 make train
 
-# 4. Start API (port 8000)
+# 4. (Optional) Evaluate model quality
+python evaluate_model.py
+
+# 5. Start API (port 8000)
 make api
 
-# 5. Start dashboard (port 8501)
+# 6. Start dashboard (port 8501)
 make dashboard
 ```
 
@@ -195,8 +199,8 @@ make docker-restart   # docker compose up --build -d
 make docker-dev       # docker compose up --build  (foreground, with logs)
 make docker-down      # stop all containers
 make docker-clean     # stop + remove volumes + local images
-make data             # download + preprocess
-make train            # run NMF mining + drift detector training
+make data             # download + preprocess (granted-only matrix)
+make train            # run NMF role mining
 make test             # pytest
 make lint             # black + flake8
 ```
@@ -208,14 +212,17 @@ make lint             # black + flake8
 - **NMF over k-means** — soft role membership; real employees belong to multiple
   organisational units. Hard clusters force artificial boundaries.
 - **k=15 roles** — BIC-optimised; interpretable at the department/function level.
+- **Granted-only matrix** — only `ACTION=1` rows are used. Denied-access rows
+  (`ACTION=0`) are Amazon's provisioning refusals, not revocations; they do not
+  carry anomaly signal and were removed from the pipeline.
+- **Unsupervised drift scoring** — `1 − cosine_similarity(W[user], H[:, system])`
+  requires no labels. Thresholds: < 0.3 = Normal, 0.3–0.7 = Minor Drift, ≥ 0.7 = High Drift.
 - **Balanced risk score** — `(n_high×1.0 + n_minor×0.5) / n_total`; tertile-based
-  categories (Safe / Review / Escalate).
+  categories (Low / Medium / High) ensure each band contains ~⅓ of employees.
 - **Redis cache** — fleet analytics (~30s to compute) cached as parquet bytes with
   24h TTL; shared across API + Dashboard replicas without hitting disk.
 - **Non-blocking startup** — analytics computation fires as a background asyncio task
   so `/health` responds immediately and Docker health checks pass within `start_period`.
-- **SHAP explanations** — per the 2026 ITDR Market Outlook, enterprise buyers require
-  "evidence-grade reporting". A flagged event with no explanation is not actionable.
 - **Audit log** — every simulation write is mirrored to `audit_log` for SOX-style traceability.
 
 ---
@@ -225,10 +232,16 @@ make lint             # black + flake8
 | Metric | Value |
 |--------|-------|
 | Roles mined (k) | 15 |
-| Role coverage | 35.1% of employees have a dominant role (>50% membership) |
-| Drift classifier ROC-AUC | 0.694 |
-| High-drift flag rate | 76.8% of evaluated (employee, system) pairs |
+| Matrix dimensions | 340 users × 7,226 resources |
+| Reconstruction MSE (X vs W·H) | 0.0033 |
+| Strong role membership (>70%) | 15.0% of employees |
+| Self-consistency gap | +0.519 (own-system drift 0.34 vs non-access 0.86) |
+| Cluster separation | +0.740 (same-cluster drift 0.18 vs cross-cluster 0.92) |
 | Fleet analytics compute time | ~30s (cached in Redis after first run) |
+
+The self-consistency gap and cluster separation confirm that the NMF cosine score
+cleanly distinguishes access that fits an employee's role profile from access that
+does not — with no labelled training data required.
 
 ---
 

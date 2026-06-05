@@ -45,9 +45,9 @@ def compute_fleet_analytics(miner, matrix: pd.DataFrame) -> pd.DataFrame:
         n_high = n_minor = n_normal = 0
         for sys_id in systems:
             ds = scorer.score(user_id, sys_id)["drift_score"]
-            if ds >= 1.0:
+            if ds >= 0.7:
                 n_high += 1
-            elif ds > 0.0:
+            elif ds >= 0.3:
                 n_minor += 1
             else:
                 n_normal += 1

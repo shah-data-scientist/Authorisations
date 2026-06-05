@@ -10,7 +10,6 @@ data:
 
 train:
 	python -m src.role_recommender.mining.probabilistic
-	python -m src.role_recommender.drift.detector
 
 evaluate:
 	python -m role_recommender.evaluation

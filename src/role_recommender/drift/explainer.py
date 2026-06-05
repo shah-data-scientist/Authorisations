@@ -1,9 +1,10 @@
 """
-explainer.py — SHAP-based explanation of drift flag decisions.
+explainer.py — SHAP-based explanation of XGBoost drift decisions (NOT USED).
 
-Per the 2026 ITDR Market Outlook, enterprise buyers require
-"evidence-grade reporting" — a flagged event with no explanation
-is not actionable. SHAP provides per-feature attribution.
+This module is retained for reference only. It depended on DriftClassifier
+(detector.py), which was removed from the active pipeline in favour of the
+unsupervised NMF cosine drift scorer. This file is not imported or called
+from any active code path.
 """
 import numpy as np
 import pandas as pd

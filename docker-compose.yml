@@ -2,25 +2,7 @@ name: access-mgmt
 
 services:
 
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: accessmgmt
-      POSTGRES_USER: accessmgmt
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U accessmgmt -d accessmgmt"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  # ── Redis ───────────────────────────────────────────────────────────────────
+  # ── Redis (fleet analytics cache) ───────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -32,19 +14,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── Alembic migrations (one-shot) ───────────────────────────────────────────
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
-    command: alembic upgrade head
-    environment:
-      DATABASE_URL: postgresql+asyncpg://accessmgmt:${POSTGRES_PASSWORD:-changeme}@db:5432/accessmgmt
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: "no"
-
   # ── FastAPI ─────────────────────────────────────────────────────────────────
   api:
     build:
@@ -54,17 +23,15 @@ services:
       uvicorn role_recommender.api.main:app
       --reload --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql+asyncpg://accessmgmt:${POSTGRES_PASSWORD:-changeme}@db:5432/accessmgmt
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
       APP_ROOT: /app
     volumes:
-      - ./src:/app/src   # hot-reload only; models/data are baked into the image
+      - ./src:/app/src          # hot-reload; models/data are baked into the image
+      - audit_db:/app/audit     # persist SQLite audit trail across restarts
     ports:
       - "8000:8000"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
@@ -86,7 +53,7 @@ services:
       APP_ROOT: /app
       PYTHONPATH: /app/src
     volumes:
-      - ./src:/app/src   # hot-reload only; models/data are baked into the image
+      - ./src:/app/src          # hot-reload; models/data are baked into the image
     ports:
       - "8501:8501"
     depends_on:
@@ -107,4 +74,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  audit_db:

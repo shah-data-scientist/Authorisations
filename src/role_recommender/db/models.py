@@ -4,10 +4,8 @@ models.py — SQLAlchemy ORM models for simulation persistence.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import DateTime, Integer, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -25,13 +23,13 @@ class Simulation(Base):
     risk_label: Mapped[str] = mapped_column(String(20), nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text)
     requested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime, server_default=func.now()
     )
     review_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="pending", index=True
     )
     reviewed_by: Mapped[str | None] = mapped_column(String(255))
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     notes: Mapped[str | None] = mapped_column(Text)
 
 
@@ -44,6 +42,6 @@ class AuditLog(Base):
     system_id: Mapped[int | None] = mapped_column(Integer)
     drift_score: Mapped[float | None] = mapped_column(Numeric(5, 4))
     performed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime, server_default=func.now()
     )
-    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    details: Mapped[str | None] = mapped_column(Text)  # JSON-encoded string

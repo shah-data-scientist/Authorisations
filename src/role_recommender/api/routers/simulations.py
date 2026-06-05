@@ -1,20 +1,22 @@
 """
-simulations.py — CRUD endpoints for simulation persistence.
+simulations.py — CRUD endpoints for simulation persistence + access revocation.
 
 POST /simulations/         — save a simulation result + audit row
 GET  /simulations/         — list simulations (filter by employee, status)
 GET  /simulations/history  — employee-centric history (employee_id required)
 PATCH /simulations/{id}    — update review_status + reviewer notes
+POST /simulations/revoke   — log an access revocation event in the audit trail
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from role_recommender.db.models import AuditLog, Simulation
 from role_recommender.db.session import get_session
@@ -54,12 +56,18 @@ class SimulationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RevokeCreate(BaseModel):
+    employee_id: int
+    system_id: int
+    reason: Optional[str] = None
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/", response_model=SimulationOut, status_code=201)
-async def create_simulation(
+def create_simulation(
     payload: SimulationCreate,
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     sim = Simulation(**payload.model_dump())
     session.add(sim)
@@ -68,18 +76,18 @@ async def create_simulation(
         employee_id=payload.employee_id,
         system_id=payload.system_id,
         drift_score=payload.drift_score,
-        details={"risk_label": payload.risk_label},
+        details=json.dumps({"risk_label": payload.risk_label}),
     )
     session.add(log)
-    await session.commit()
-    await session.refresh(sim)
+    session.flush()
+    session.refresh(sim)
     return sim
 
 
 @router.get("/history", response_model=list[SimulationOut])
-async def simulation_history(
+def simulation_history(
     employee_id: int = Query(..., description="Filter by employee ID"),
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     q = (
         select(Simulation)
@@ -87,33 +95,31 @@ async def simulation_history(
         .order_by(Simulation.requested_at.desc())
         .limit(50)
     )
-    result = await session.execute(q)
-    return result.scalars().all()
+    return session.execute(q).scalars().all()
 
 
 @router.get("/", response_model=list[SimulationOut])
-async def list_simulations(
+def list_simulations(
     employee_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None, description="pending / approved / denied"),
     limit: int = Query(100, le=500),
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     q = select(Simulation).order_by(Simulation.requested_at.desc()).limit(limit)
     if employee_id is not None:
         q = q.where(Simulation.employee_id == employee_id)
     if status is not None:
         q = q.where(Simulation.review_status == status)
-    result = await session.execute(q)
-    return result.scalars().all()
+    return session.execute(q).scalars().all()
 
 
 @router.patch("/{sim_id}", response_model=SimulationOut)
-async def review_simulation(
+def review_simulation(
     sim_id: int,
     payload: SimulationUpdate,
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
-    sim = await session.get(Simulation, sim_id)
+    sim = session.get(Simulation, sim_id)
     if sim is None:
         raise HTTPException(status_code=404, detail="Simulation not found")
     if payload.review_status not in ("approved", "denied", "pending"):
@@ -130,9 +136,27 @@ async def review_simulation(
         employee_id=sim.employee_id,
         system_id=sim.system_id,
         drift_score=float(sim.drift_score),
-        details={"reviewed_by": payload.reviewed_by, "notes": payload.notes},
+        details=json.dumps(
+            {"reviewed_by": payload.reviewed_by, "notes": payload.notes}
+        ),
     )
     session.add(log)
-    await session.commit()
-    await session.refresh(sim)
+    session.flush()
+    session.refresh(sim)
     return sim
+
+
+@router.post("/revoke", status_code=201)
+def revoke_access(
+    payload: RevokeCreate,
+    session: Session = Depends(get_session),
+):
+    """Log an access revocation event in the audit trail."""
+    log = AuditLog(
+        action="access_revoked",
+        employee_id=payload.employee_id,
+        system_id=payload.system_id,
+        details=json.dumps({"reason": payload.reason}),
+    )
+    session.add(log)
+    return {"status": "logged", "action": "access_revoked"}

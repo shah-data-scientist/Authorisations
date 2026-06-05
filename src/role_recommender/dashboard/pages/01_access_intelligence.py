@@ -23,11 +23,10 @@ st.caption(
 
 st.info(
     "**Key concepts used throughout this platform:**\n\n"
-    "- **Drift Score** — an evaluation of a *specific system access* for a"
-    " *specific employee*. It measures how unusual it is for that employee"
-    " to access that particular system, based on what employees in their"
-    " cluster typically access. Values: 0.0 (normal), 0.3 (minor drift),"
-    " 1.0 (high drift).\n\n"
+    "- **Drift Score** — a continuous score (0–1) for a *specific"
+    " (employee, system)* pair, measuring how unusual that access is"
+    " relative to the employee's NMF role profile."
+    " **< 0.3 = Normal**, **0.3–0.7 = Minor Drift**, **≥ 0.7 = High Drift**.\n\n"
     "- **Balanced Risk Score** — an overall risk score *given to a user*,"
     " summarising their entire access profile. Formula:"
     " `(n_high × 1.0 + n_minor × 0.5 + n_normal × 0.0) / total_systems`."
@@ -169,7 +168,7 @@ with col4:
         nbins=20,
         title="Anomaly Rate Distribution Across Employees",
         labels={
-            "anomaly_rate": "Anomaly Rate (% systems with drift > 0)",
+            "anomaly_rate": "Anomaly Rate (% systems with drift ≥ 0.3)",
             "count": "Employees",
         },
         color_discrete_sequence=["#3498db"],
@@ -303,7 +302,7 @@ if selected is not None:
                         "drift_score": r["drift_score"],
                     })
             risk_df = pd.DataFrame(drift_rows)
-            n_anomalous = (risk_df["drift_score"] > 0).sum()
+            n_anomalous = (risk_df["drift_score"] >= 0.3).sum()
             pct = n_anomalous / len(risk_df) * 100
 
             fig_gauge = go.Figure(go.Indicator(

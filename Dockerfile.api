@@ -20,10 +20,6 @@ COPY --from=builder /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl gunicorn \
  && rm -rf /tmp/*.whl
 
-# Alembic lives outside the wheel — copy config and migrations
-COPY alembic.ini .
-COPY alembic/ ./alembic/
-
 # Bake models + processed data into the image (avoids slow Windows bind-mount I/O)
 COPY models/ ./models/
 COPY data/processed/ ./data/processed/

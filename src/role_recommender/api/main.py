@@ -2,6 +2,7 @@
 main.py — FastAPI application entry point.
 Run with: uvicorn role_recommender.api.main:app --reload --port 8000
 """
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,30 +11,19 @@ from loguru import logger
 
 from role_recommender.api.routers import analytics, drift, roles, users
 from role_recommender.api.routers import simulations
+from role_recommender.db.session import create_tables
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import asyncio
-    import os
+    # Create SQLite tables (no-op if they already exist)
+    try:
+        create_tables()
+        logger.info("Audit database: OK")
+    except Exception as exc:
+        logger.warning(f"Audit database setup failed: {exc}")
 
-    # DB connection check (non-fatal)
-    if os.environ.get("DATABASE_URL"):
-        try:
-            from sqlalchemy import text
-            from role_recommender.db.session import _get_engine
-            engine, _ = _get_engine()
-            async with engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
-            logger.info("Database connection: OK")
-        except Exception as exc:
-            logger.warning(
-                f"Database not reachable: {exc}. "
-                "Simulation persistence disabled."
-            )
-
-    # Kick off fleet analytics in the background so /health responds immediately.
-    # The dashboard and /analytics/fleet will block until it's ready via Redis/parquet.
+    # Warm up fleet analytics in the background
     asyncio.create_task(
         asyncio.to_thread(analytics.ensure_analytics_fresh)
     )

@@ -180,6 +180,7 @@ def score_user_all_systems(user_id: int) -> pd.DataFrame:
         rows.append({
             "system_id": sys_id,
             "drift_score": r["drift_score"],
+            "drift_category": r["drift_category"],
             "explanation": r["explanation"],
         })
     return (

@@ -5,7 +5,7 @@ import pandas as pd
 from loguru import logger
 from role_recommender.config import (
     RAW_DATASET, DATA_INTERIM, DATA_PROCESSED,
-    PROCESSED_MATRIX, PROCESSED_EVENTS,
+    PROCESSED_MATRIX,
 )
 
 
@@ -26,14 +26,16 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_user_permission_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Build a binary user × resource matrix.
+    Build a binary user × resource matrix from granted accesses only.
     Rows = unique employees (by ROLE_CODE as user proxy).
     Columns = unique RESOURCE values.
-    Entry = 1 if user has access, 0 otherwise.
+    Entry = 1 if user has been granted access, 0 otherwise.
     """
     logger.info("Building user × permission matrix …")
+    granted = df[df["ACTION"] == 1]
+    logger.info(f"  Granted accesses: {len(granted):,} / {len(df):,} total")
     matrix = (
-        df.groupby(["ROLE_CODE", "RESOURCE"])
+        granted.groupby(["ROLE_CODE", "RESOURCE"])
         .size()
         .unstack(fill_value=0)
         .clip(upper=1)  # binarise: has-access or not
@@ -59,9 +61,6 @@ def run() -> None:
     matrix = build_user_permission_matrix(df)
     matrix.to_parquet(PROCESSED_MATRIX)
     logger.success(f"Matrix saved → {PROCESSED_MATRIX}")
-
-    df.to_parquet(PROCESSED_EVENTS, index=False)
-    logger.success(f"Events saved → {PROCESSED_EVENTS}")
 
 
 if __name__ == "__main__":
